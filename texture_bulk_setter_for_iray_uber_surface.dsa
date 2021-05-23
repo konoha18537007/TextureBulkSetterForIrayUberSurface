@@ -1,0 +1,661 @@
+/******************************************************************
+Name : Texture Bulk Setter For Iray Uber Surface
+Version : 1.0
+Author : @konoha18537007
+******************************************************************/
+
+/*
+# ##### BEGIN GPL LICENSE BLOCK #####
+#
+#  This program is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License
+#  as published by the Free Software Foundation; either version 2
+#  of the License, or (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software Foundation,
+#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+#
+# ##### END GPL LICENSE BLOCK #####
+*/
+
+(function(){
+    var node = Scene.getPrimarySelection();
+    if(!node){
+        MessageBox.information("Select an object.", "Error", "&OK");
+        return;
+    }else if(node.inherits("DzBone")){
+		node = node.getSkeleton();
+	}
+
+    var shape = node.getObject().getCurrentShape();
+    if(!shape){
+        MessageBox.information("This object dosen't have shape.", "Error", "&OK");
+        return;
+    }
+
+    var mtls = shape.getAllSelectedMaterials();
+    if(mtls.length == 0){
+        MessageBox.information("Select more than one materials.", "Error", "&OK");
+        return;
+    }
+    
+    // -- get parameters by dialog --
+    var params = initParams();
+    if(isNullOrUndef(params)){ return; }
+    //MessageBox.information(JSON.stringify(params,null,2), "", "&OK"); // [DEBUG]
+
+    var skipped = [];  // [{"fileName": String(file name), "reason" : String(the reason why)}, ...]
+
+    var dialog1 = new DzDialog;
+    setDialogLayout(dialog1, params);
+
+    // open dialog
+    var ret_dialog = dialog1.exec();
+    if(!ret_dialog){ return; } // canceled by user
+
+    // -- set textures --
+    // iterate over selected materials
+    var result = {};
+    beginUndo();
+    for(var i=0; i<mtls.length; i+=1){
+        var mtl = mtls[i];
+        //MessageBox.information(mtl.getMaterialName(), "", "&OK"); // [DEBUG]
+        if(mtl.getMaterialName() != "Iray Uber"){
+            MessageBox.information("Material \"%1\" is Skipped. \nThe shader type is not Iray Uber. (%2)".arg(mtl.getLabel()).arg(mtl.getMaterialName()), "Error", "&OK");
+            continue;
+        }
+
+        // set Maps
+        var tmp_result = {};
+        tmp_result["BaseColor"] = setMap("BaseColor", mtl.findProperty("Diffuse Color"));
+        tmp_result["TranslucencyColor"] = setMap("TranslucencyColor", mtl.findProperty("Translucency Color"));
+        tmp_result["GlossyReflectivity"] = setMap("GlossyReflectivity", mtl.findProperty("Glossy Reflectivity"));
+        tmp_result["DualLobeSpecularReflectivity"] = setMap("DualLobeSpecularReflectivity", mtl.findProperty("Dual Lobe Specular Reflectivity"));
+        tmp_result["DiffuseRoughness"] = setMap("DiffuseRoughness", mtl.findProperty("Diffuse Roughness"));
+        tmp_result["GlossyRoughness"] = setMap("GlossyRoughness", mtl.findProperty("Glossy Roughness"));
+        tmp_result["Metallicity"] = setMap("Metallicity", mtl.findProperty("Metallic Weight"));
+        tmp_result["BaseBump"] = setMap("BaseBump", mtl.findProperty("Bump Strength"));
+        tmp_result["NormalMap"] = setMap("NormalMap", mtl.findProperty("Normal Map"));
+        tmp_result["DisplacementStrength"] = setMap("DisplacementStrength", mtl.findProperty("Displacement Strength"));
+        tmp_result["CutoutOpacity"] = setMap("CutoutOpacity", mtl.findProperty("Cutout Opacity"));
+
+        result[mtl.getLabel()] = tmp_result;
+    }
+    acceptUndo("Texture Bulk Setter");
+
+    MessageBox.information(createResutMessage(result), "", "&OK");
+    
+    //--- Main Process End -----------------------------------------------------------------------/
+
+
+    /** check if null or undefined */
+    function isNullOrUndef(_in){
+        return(typeof(_in) === "undefined" || _in === null);
+    }
+
+    /** Load settings.json and create internal data.
+        If error on reading json, returns null. */
+    function initParams(){
+        var ret = {
+            path: "",
+            fileNameWoExt: "",
+            ext: "",
+            slots:{
+                BaseColor:{ enabled: true, suffix: "", fullPath: ""},
+                TranslucencyColor:{ enabled: true, suffix: "", fullPath: ""},
+                GlossyReflectivity:{ enabled: true, suffix: "", fullPath: ""},
+                DualLobeSpecularReflectivity:{ enabled: true, suffix: "", fullPath: ""},
+                DiffuseRoughness:{ enabled: true, suffix: "", fullPath: ""},
+                GlossyRoughness:{ enabled: true, suffix: "", fullPath: ""},
+                Metallicity:{ enabled: true, suffix: "", fullPath: ""},
+                BaseBump:{ enabled: true, suffix: "", fullPath: ""},
+                NormalMap:{ enabled: true, suffix: "", fullPath: ""},
+                DisplacementStrength:{ enabled: true, suffix: "", fullPath: ""},
+                CutoutOpacity:{ enabled: true, suffix: "", fullPath: ""}
+            }
+        };
+
+        // read and parse alias.json file
+        var jsonFile = new DzFile( DzFile(getScriptFileName()).path()+"/settings.json" );
+        if(!jsonFile.exists()){
+            MessageBox.critical("settings.json not exist", "", "&OK");
+            return null;
+        }
+
+        var json = null;
+        try{
+            jsonFile.open(DzFile.ReadOnly);
+            var lines = jsonFile.read();
+            json = JSON.parse(lines);
+        }catch(e){
+            MessageBox.critical(e,"settings.json parse error", "&OK");
+        }finally{
+            jsonFile.close();
+        }
+
+        if(isNullOrUndef(json)){
+            return null; // error : couldn't open alias file
+        }
+
+        for(var k in json){
+            //MessageBox.information(key, "","&OK"); // [DEBUG]
+            if (typeof(json[k].enabled) != "boolean"){
+                MessageBox.critical(String("settings.json error %1.enabled ").arg(k) ,"settings.json error.", "&OK");
+                return null;
+            }
+            if (typeof(json[k].suffix) != "string"){
+                MessageBox.critical(String("json value error %1.suffix").arg(k) ,"settings.json error.", "&OK");
+                return null;
+            }
+            ret.slots[k].enabled = json[k].enabled;
+            ret.slots[k].suffix = json[k].suffix;
+        }
+        
+        return ret;
+    }
+
+    /** set map to material property
+        returns result(str) : result contains description of the result of this function
+     */
+    function setMap(key, prop){
+        var ret = "";
+        var file = new DzFile(params.slots[key].fullPath);
+        if(!file.exists()){ return "file not exist"; }
+
+        if(params.slots[key].enabled){
+            prop.setMap(params.slots[key].fullPath);
+            ret = "success";
+        }else{
+            ret = "skipped";
+        }
+        return ret;
+    }
+
+
+    function createResutMessage(result){
+        var ret ="The textures below was set successfully:\n";
+        for (var k1 in result){
+            ret += "[%1]\n".arg(k1);
+            for(var k2 in result[k1]){
+                var tmp = result[k1][k2];
+                if(tmp === "success"){
+                    ret += " - %1\n".arg(k2);
+                }
+            }
+            ret += "\n";
+        }
+        return ret;
+    }
+
+    // ###############################################################################
+    // dialog
+    function setDialogLayout(dialog, params){
+        dialog.width = 800;
+        dialog.height = dialog.minHeight;
+        
+        // Vertical Layout
+        var vBoxLayout = new DzVBoxLayout(dialog);
+        vBoxLayout.autoAdd = true;
+        vBoxLayout.margin = 5;
+        vBoxLayout.spacing = 5;
+        
+        // Title Label
+        var labelDialogTitle = new DzLabel(dialog);
+        labelDialogTitle.alignment = DzLabel.AlignLeft;
+        labelDialogTitle.text = "Texture Bulk Setter for Iray Uber Surface";
+        var labelEmpty0 = new DzLabel(dialog);     // spacer
+        
+        
+        // button : choose base file
+        var buttonChooseBaseFile = new DzPushButton(dialog);
+        buttonChooseBaseFile.text = "Choose Base File...";
+        buttonChooseBaseFile.maxWidth = 130;
+        connect(buttonChooseBaseFile, "clicked()", pushBtnChooseBaseFile);
+        
+        var lblDirPath = new DzLabel(dialog);
+        lblDirPath.text = "Base Dir : ";
+        lblDirPath.minWidth = 550;
+        
+        
+        //################################################################################
+        // Group Box
+        var gb1 = new DzVGroupBox(dialog);
+        gb1.title = "";
+        gb1.columns = 5;
+        gb1.insideSpacing = 10;
+        gb1.insideMergin = 10;
+        
+        // ------- Base Color --------
+        var cbBC = new DzCheckBox(gb1);
+        cbBC.checked = params.slots["BaseColor"].enabled;
+        connect(cbBC, "clicked()", function(){pushCBEnable(cbBC.checked, "BaseColor");});
+        
+        var lblBC = new DzLabel(gb1);
+        lblBC.text = "Base Color (\"%1\")".arg(params.slots["BaseColor"].suffix);
+        lblBC.minWidth = 200;
+        
+        var btnResetBC = new DzPushButton(gb1);
+        btnResetBC.text = "Reset";
+        connect(btnResetBC, "clicked()", function(){pushBtnReset("BaseColor", lblFileBC);});
+        
+        var btnFileBC = new DzPushButton(gb1);
+        btnFileBC.text = "Choose File...";
+        connect(btnFileBC, "clicked()", function(){pushBtnFile("BaseColor", lblFileBC);});
+        
+        var lblFileBC = new DzLabel(gb1);
+        lblFileBC.text = "";
+        lblFileBC.minWidth = 550;
+        
+        
+        
+        // ------- Translucency Color --------
+        var cbTC = new DzCheckBox(gb1);
+        cbTC.checked = params.slots["TranslucencyColor"].enabled;
+        connect(cbTC, "clicked()", function(){pushCBEnable(cbTC.checked, "TranslucencyColor");});
+        
+        var lblTC = new DzLabel(gb1);
+        lblTC.text = "Translucency Color (\"%1\")".arg(params.slots["TranslucencyColor"].suffix);
+        lblTC.minWidth = 200;
+        
+        var btnResetTC = new DzPushButton(gb1);
+        btnResetTC.text = "Reset";
+        connect(btnResetTC, "clicked()", function(){pushBtnReset("TranslucencyColor", lblFileTC);});
+        
+        var btnFileTC = new DzPushButton(gb1);
+        btnFileTC.text = "Choose File...";
+        connect(btnFileTC,  "clicked()", function(){pushBtnFile("TranslucencyColor", lblFileTC);});
+        
+        var lblFileTC = new DzLabel(gb1);
+        lblFileTC.text = "";
+        lblFileTC.minWidth = 550;
+        
+        
+        //################################################################################
+        // Group Box
+        var gb2 = new DzVGroupBox(dialog);
+        gb2.title = "";
+        gb2.columns = 5;
+        gb2.insideSpacing = 10;
+        gb2.insideMergin = 10;
+        
+        
+        // ------- Glossy Reflectivity --------
+        var cbGR = new DzCheckBox(gb2);
+        cbGR.checked = params.slots["GlossyReflectivity"].enabled;
+        connect(cbGR, "clicked()", function(){pushCBEnable(cbGR.checked, "GlossyReflectivity");});
+        
+        var lblGR = new DzLabel(gb2);
+        lblGR.text = "Glossy Reflectivity (\"%1\")".arg(params.slots["GlossyReflectivity"].suffix);
+        lblGR.minWidth = 200;
+        
+        var btnResetGR = new DzPushButton(gb2);
+        btnResetGR.text = "Reset";
+        connect(btnResetGR, "clicked()", function(){pushBtnReset("GlossyReflectivity", lblFileGR);});
+        
+        var btnFileGR = new DzPushButton(gb2);
+        btnFileGR.text = "Choose File...";
+        connect(btnFileGR, "clicked()", function(){pushBtnFile("GlossyReflectivity", lblFileGR);});
+        
+        var lblFileGR = new DzLabel(gb2);
+        lblFileGR.text = "";
+        lblFileGR.minWidth = 550;
+        
+        
+        // ------- Dual Lobe Specular Reflectivity --------
+        var cbDLSR = new DzCheckBox(gb2);
+        cbDLSR.checked = params.slots["DualLobeSpecularReflectivity"].enabled;
+        connect(cbDLSR, "clicked()", function(){pushCBEnable(cbDLSR.checked, "DualLobeSpecularReflectivity");});
+        
+        var lblDLSR = new DzLabel(gb2);
+        lblDLSR.text = "Dual Lobe Specular Reflectivity (\"%1\")".arg(params.slots["DualLobeSpecularReflectivity"].suffix);
+        lblDLSR.minWidth = 200;
+        
+        var btnResetDLSR = new DzPushButton(gb2);
+        btnResetDLSR.text = "Reset";
+        connect(btnResetDLSR, "clicked()", function(){pushBtnReset("DualLobeSpecularReflectivity", lblFileDLSR);});
+        
+        var btnFileDLSR = new DzPushButton(gb2);
+        btnFileDLSR.text = "Choose File...";
+        connect(btnFileDLSR, "clicked()", function(){pushBtnFile("DualLobeSpecularReflectivity", lblFileDLSR);});
+        
+        var lblFileDLSR = new DzLabel(gb2);
+        lblFileDLSR.text = "";
+        lblFileDLSR.minWidth = 550;
+        
+        
+        
+        //################################################################################
+        // Group Box
+        var gb3 = new DzVGroupBox(dialog);
+        gb3.title = "";
+        gb3.columns = 5;
+        gb3.insideSpacing = 10;
+        gb3.insideMergin = 10;
+        
+        
+        // ------- Diffuse Roughness --------
+        var cbDR = new DzCheckBox(gb3);
+        cbDR.checked = params.slots["DiffuseRoughness"].enabled;;
+        connect(cbDR, "clicked()", function(){pushCBEnable(cbDR.checked, "DiffuseRoughness");});
+        
+        var lblDR = new DzLabel(gb3);
+        lblDR.text = "Diffuse Roughness (\"%1\")".arg(params.slots["DiffuseRoughness"].suffix);
+        lblDR.minWidth = 200;
+        
+        var btnResetDR = new DzPushButton(gb3);
+        btnResetDR.text = "Reset";
+        connect(btnResetDR, "clicked()", function(){pushBtnReset("DiffuseRoughness", lblFileDR);});
+        
+        var btnFileDR = new DzPushButton(gb3);
+        btnFileDR.text = "Choose File...";
+        connect(btnFileDR, "clicked()", function(){pushBtnFile("DiffuseRoughness", lblFileDR);});
+        
+        var lblFileDR = new DzLabel(gb3);
+        lblFileDR.text = "";
+        lblFileDR.minWidth = 550;
+        
+        
+        // ------- Glossy Roughness --------
+        var cbGRo = new DzCheckBox(gb3);
+        cbGRo.checked = params.slots["GlossyRoughness"].enabled;;
+        connect(cbGRo, "clicked()", function(){pushCBEnable(cbGRo.checked, "GlossyRoughness");});
+        
+        var lblGRo = new DzLabel(gb3);
+        lblGRo.text = "Glossy Roughness (\"%1\")".arg(params.slots["GlossyRoughness"].suffix);
+        lblGRo.minWidth = 200;
+        
+        var btnResetGRo = new DzPushButton(gb3);
+        btnResetGRo.text = "Reset";
+        connect(btnResetGRo, "clicked()", function(){pushBtnReset("GlossyRoughness", lblFileGRo);});
+        
+        var btnFileGRo = new DzPushButton(gb3);
+        btnFileGRo.text = "Choose File...";
+        connect(btnFileGRo, "clicked()",  function(){pushBtnFile("GlossyRoughness", lblFileGRo);});
+        
+        var lblFileGRo = new DzLabel(gb3);
+        lblFileGRo.text = "";
+        lblFileGRo.minWidth = 550;
+        
+        
+        //################################################################################
+        // Group Box
+        var gb4 = new DzVGroupBox(dialog);
+        gb4.title = "";
+        gb4.columns = 5;
+        gb4.insideSpacing = 10;
+        gb4.insideMergin = 10;
+        
+        
+        // ------- Metallicity --------
+        var cbM = new DzCheckBox(gb4);
+        cbM.checked = params.slots["Metallicity"].enabled;
+        connect(cbM, "clicked()", function(){pushCBEnable(cbM.checked, "Metallicity");});
+        
+        var lblM = new DzLabel(gb4);
+        lblM.text = "Metallicity (\"%1\")".arg(params.slots["Metallicity"].suffix);
+        lblM.minWidth = 200;
+        
+        var btnResetM = new DzPushButton(gb4);
+        btnResetM.text = "Reset";
+        connect(btnResetM, "clicked()", function(){pushBtnReset("Metallicity", lblFileM);});
+        
+        var btnFileM = new DzPushButton(gb4);
+        btnFileM.text = "Choose File...";
+        connect(btnFileM, "clicked()", function(){pushBtnFile("Metallicity", lblFileM);});
+        
+        var lblFileM = new DzLabel(gb4);
+        lblFileM.text = "";
+        lblFileM.minWidth = 550;
+        
+        
+        //################################################################################
+        // Group Box
+        var gb5 = new DzVGroupBox(dialog);
+        gb5.title = "";
+        gb5.columns = 5;
+        gb5.insideSpacing = 10;
+        gb5.insideMergin = 10;
+        
+        
+        // ------- Base Bump --------
+        var cbBB = new DzCheckBox(gb5);
+        cbBB.checked = params.slots["BaseBump"].enabled;
+        connect(cbBB, "clicked()", function(){pushCBEnable(cbBB.checked, "BaseBump");});
+        
+        var lblBB = new DzLabel(gb5);
+        lblBB.text = "Base Bump (\"%1\")".arg(params.slots["BaseBump"].suffix);
+        lblBB.minWidth = 200;
+        
+        var btnResetBB = new DzPushButton(gb5);
+        btnResetBB.text = "Reset";
+        connect(btnResetBB, "clicked()", function(){pushBtnReset("BaseBump", lblFileBB);});
+        
+        var btnFileBB = new DzPushButton(gb5);
+        btnFileBB.text = "Choose File...";
+        connect(btnFileBB, "clicked()", function(){pushBtnFile("BaseBump", lblFileBB);});
+        
+        var lblFileBB = new DzLabel(gb5);
+        lblFileBB.text = "";
+        lblFileBB.minWidth = 550;
+        
+        
+        // ------- Normal Map --------
+        var cbNM = new DzCheckBox(gb5);
+        cbNM.checked = params.slots["NormalMap"].enabled;
+        connect(cbNM, "clicked()", function(){pushCBEnable(cbNM.checked, "NormalMap");});
+        
+        var lblNM = new DzLabel(gb5);
+        lblNM.text = "Normal Map (\"%1\")".arg(params.slots["NormalMap"].suffix);
+        lblNM.minWidth = 200;
+        
+        var btnResetNM = new DzPushButton(gb5);
+        btnResetNM.text = "Reset";
+        connect(btnResetNM, "clicked()", function(){pushBtnReset("NormalMap", lblFileNM);});
+        
+        var btnFileNM = new DzPushButton(gb5);
+        btnFileNM.text = "Choose File...";
+        connect(btnFileNM, "clicked()", function(){pushBtnFile("NormalMap", lblFileNM);});
+        
+        var lblFileNM = new DzLabel(gb5);
+        lblFileNM.text = "";
+        lblFileNM.minWidth = 550;
+        
+        
+        //################################################################################
+        // Group Box
+        var gb6 = new DzVGroupBox(dialog);
+        gb6.title = "";
+        gb6.columns = 5;
+        gb6.insideSpacing = 10;
+        gb6.insideMergin = 10;
+        
+        // ------- Displacement Strength --------
+        var cbDS = new DzCheckBox(gb6);
+        cbDS.checked = params.slots["DisplacementStrength"].enabled;
+        connect(cbDS, "clicked()", function(){pushCBEnable(cbDS.checked, "DisplacementStrength");});
+        
+        var lblDS = new DzLabel(gb6);
+        lblDS.text = "Displacement Strength (\"%1\")".arg(params.slots["DisplacementStrength"].suffix);
+        lblDS.minWidth = 200;
+        
+        var btnResetDS = new DzPushButton(gb6);
+        btnResetDS.text = "Reset";
+        connect(btnResetDS, "clicked()", function(){pushBtnReset("DisplacementStrength", lblFileDS);});
+        
+        var btnFileDS = new DzPushButton(gb6);
+        btnFileDS.text = "Choose File...";
+        connect(btnFileDS, "clicked()", function(){pushBtnFile("DisplacementStrength", lblFileDS);});
+        
+        var lblFileDS = new DzLabel(gb6);
+        lblFileDS.text = "";
+        lblFileDS.minWidth = 550;
+        
+        
+        
+        //################################################################################
+        // Group Box
+        var gb7 = new DzVGroupBox(dialog);
+        gb7.title = "";
+        gb7.columns = 5;
+        gb7.insideSpacing = 10;
+        gb7.insideMergin = 10;
+        
+        
+        // ------- Cutout Opacity --------
+        var cbCO = new DzCheckBox(gb7);
+        cbCO.checked = params.slots["CutoutOpacity"].enabled;
+        connect(cbCO, "clicked()", function(){pushCBEnable(cbCO.checked, "CutoutOpacity");});
+        
+        var lblCO = new DzLabel(gb7);
+        lblCO.text = "Cutout Opacity (\"%1\")".arg(params.slots["CutoutOpacity"].suffix);
+        lblCO.minWidth = 200;
+        
+        var btnResetCO = new DzPushButton(gb7);
+        btnResetCO.text = "Reset";
+        connect(btnResetCO, "clicked()", function(){pushBtnReset("CutoutOpacity", lblFileCO);});
+        
+        var btnFileCO = new DzPushButton(gb7);
+        btnFileCO.text = "Choose File...";
+        connect(btnFileCO, "clicked()", function(){pushBtnFile("CutoutOpacity", lblFileCO);});
+        
+        var lblFileCO = new DzLabel(gb7);
+        lblFileCO.text = "";
+        lblFileCO.minWidth = 550;
+        
+        
+        // ##############################################################################
+        // ------- Footer --------
+        var groupBoxFooter = new DzVGroupBox(dialog);
+        groupBoxFooter.columns = 9;
+        
+        // spacer
+        var labelEmpty2 = new DzLabel(groupBoxFooter);
+        var labelEmpty3 = new DzLabel(groupBoxFooter);
+        var labelEmpty4 = new DzLabel(groupBoxFooter);
+        var labelEmpty5 = new DzLabel(groupBoxFooter);
+        var labelEmpty6 = new DzLabel(groupBoxFooter);
+        var labelEmpty7 = new DzLabel(groupBoxFooter);
+        
+        // button : run
+        var buttonRun = new DzPushButton(groupBoxFooter);
+        buttonRun.text = "Run";
+        dialog.setAcceptButton(buttonRun);
+        
+        // button : exit
+        var buttonExit = new DzPushButton(groupBoxFooter);
+        buttonExit.text = "Exit";
+        dialog.setRejectButton(buttonExit);
+        
+        
+        
+        // ##################################################################
+        // Functions
+        
+        /** concatenate path */
+        function concatFileName(name, suffix, ext){
+            var ret = name + suffix;
+            if(ext.isEmpty()){
+                // do nothing
+            }else{
+                ret = name + suffix + "." + ext;
+            }
+            return ret;
+        }
+        
+        
+        // ##################################################################
+        // Call Back Functions
+        
+        /** update file path */
+        function updateFile(key, path, fileName, lblObj){
+            lblObj.text=fileName;
+            params.slots[key].fullPath = path + '/' + fileName;
+        }
+        
+        /** check button */
+        function pushCBEnable(checked,slotName){
+            params.slots[slotName].enabled = checked;
+            //MessageBox.information(checked, "info", "&OK"); // [DEBUG]
+            return;
+        }
+        
+        
+        /** base file button */
+        function pushBtnChooseBaseFile(){
+            var file = FileDialog.doFileDialog(true, "Select a file for setting base file path", DzFile(getScriptFileName()).path(), "", null, undefined);
+            if(file.isEmpty()){ return; }
+            
+            var path = file.split("/").slice(0,-1).join("/");
+            if(path.isEmpty()){ return; }
+            //MessageBox.information(path, "", "&OK"); // [DEBUG]
+            
+            var fileName = file.split("/").slice(-1)[0];
+            if(fileName.isEmpty()){ return; }
+            //MessageBox.information(fileName, "", "&OK"); // [DEBUG]
+            
+            var fileNameWoExt;
+            var ext;
+            var tmp = fileName.split(".");
+            //MessageBox.information(tmp, "", "&OK"); // [DEBUG]
+            
+            if(tmp.length>1){
+                fileNameWoExt = tmp.slice(0, -1).join('.');
+                ext = tmp.slice(-1)[0];
+            }else{
+                fileNameWoExt = fileName;  // if no file extension (not supposed to be used in this script)
+                ext = "";
+            }
+            //MessageBox.information(fileNameWoExt, "", "&OK"); // [DEBUG]
+            //MessageBox.information(ext, "", "&OK"); // [DEBUG]
+            
+            params.path = path;
+            params.fileNameWoExt = fileNameWoExt;
+            params.ext = ext;
+            lblDirPath.text = "Base Dir : %1".arg(path);
+            
+            // update all texture's paths
+            updateFile("BaseColor", path, concatFileName(fileNameWoExt, params.slots["BaseColor"].suffix, ext), lblFileBC);
+            updateFile("TranslucencyColor", path, concatFileName(fileNameWoExt, params.slots["TranslucencyColor"].suffix, ext), lblFileTC);
+            updateFile("GlossyReflectivity", path, concatFileName(fileNameWoExt, params.slots["GlossyReflectivity"].suffix, ext), lblFileGR);
+            updateFile("DualLobeSpecularReflectivity", path, concatFileName(fileNameWoExt, params.slots["DualLobeSpecularReflectivity"].suffix, ext), lblFileDLSR);
+            updateFile("DiffuseRoughness", path, concatFileName(fileNameWoExt, params.slots["DiffuseRoughness"].suffix, ext), lblFileDR);
+            updateFile("GlossyRoughness", path, concatFileName(fileNameWoExt, params.slots["GlossyRoughness"].suffix, ext), lblFileGRo);
+            updateFile("Metallicity", path, concatFileName(fileNameWoExt, params.slots["Metallicity"].suffix, ext), lblFileM);
+            updateFile("BaseBump", path, concatFileName(fileNameWoExt, params.slots["BaseBump"].suffix, ext), lblFileBB);
+            updateFile("NormalMap", path, concatFileName(fileNameWoExt, params.slots["NormalMap"].suffix, ext), lblFileNM);
+            updateFile("DisplacementStrength", path, concatFileName(fileNameWoExt, params.slots["DisplacementStrength"].suffix, ext), lblFileDS);
+            updateFile("CutoutOpacity", path, concatFileName(fileNameWoExt, params.slots["CutoutOpacity"].suffix, ext), lblFileCO);
+            return;
+        }
+        
+        /** reset button */
+        function pushBtnReset(key, lblObj){
+            updateFile(key, params.path, concatFileName(params.fileNameWoExt, params.slots[key].suffix, params.ext), lblObj);
+            return;
+        }
+        
+        /** choose file button */
+        function pushBtnFile(key, lblObj){
+            var startWith;
+            if(params.path.isEmpty()){
+                startWith = DzFile(getScriptFileName()).path();
+            }else{
+                startWith = params.path;
+            }
+            var file = FileDialog.doFileDialog(true, "Select the texture file", startWith, "", null, undefined);
+            if(file.isEmpty()){ return; }
+            
+            lblObj.text = file;
+            params.slots[key].fullPath = file;
+            
+            return;
+        }
+    }
+
+})();

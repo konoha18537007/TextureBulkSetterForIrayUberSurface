@@ -1,0 +1,34 @@
+{
+    "BaseColor": {
+        "enabled": true,"suffix": "" },
+
+    "TranslucencyColor": {
+        "enabled": false, "suffix": "" },
+
+    "GlossyReflectivity": {
+        "enabled": true, "suffix": "_s" },
+
+    "DualLobeSpecularReflectivity": {
+        "enabled": false, "suffix": "_s" },
+
+    "DiffuseRoughness": {
+        "enabled": true, "suffix": "_r" },
+
+    "GlossyRoughness": {
+        "enabled": true, "suffix": "_r" },
+
+    "Metallicity": {
+        "enabled": true, "suffix": "_m" },
+
+    "BaseBump": {
+        "enabled": true, "suffix": "_b" },
+
+    "NormalMap": {
+        "enabled": true, "suffix": "_n" },
+
+    "DisplacementStrength": {
+        "enabled": true, "suffix": "_h" },
+
+    "CutoutOpacity": {
+        "enabled": true, "suffix": "_o" }
+}
