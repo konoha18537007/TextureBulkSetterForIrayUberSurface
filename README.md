@@ -61,7 +61,7 @@ You can change the suffixes and whether checked or not by dafault by editing set
 ## Installation
 * Put this script anywhere you want.
 
-## Unnstallation
+## Uninstallation
 * Delete this script.
 
 ## License
