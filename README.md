@@ -52,7 +52,7 @@ I tested this only on DAZ Studio 4.15.0.2 Pro Public Build. Use this script at y
 
 6. Push "Run" to set textures.
 
-## Advance Usage
+## Advanced Usage
 You can change the suffixes and whether checked or not by dafault by editing settins.json.
 
 * `enabled` key stands whether checked or not by dafault.
