@@ -24,7 +24,7 @@ Surfaces ペインで選択中のマテリアル(複数可)に対し、PBR テ�
 | Glossy Roughness | _r |
 | Metallicity | _m |
 | Base Bump | _b |
-| Normal Map | n |
+| Normal Map | _n |
 | Displacement Strength | _h |
 | Cutout Opacity | _o |
 
