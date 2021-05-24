@@ -24,7 +24,7 @@ The textures this script can handle and their suffixes by default are listed bel
 | Glossy Roughness | _r |
 | Metallicity | _m |
 | Base Bump | _b |
-| Normal Map | n |
+| Normal Map | _n |
 | Displacement Strength | _h |
 | Cutout Opacity | _o |
 
