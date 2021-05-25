@@ -2,7 +2,7 @@
 DAZ Studio Addon.
 
 ## Description
-With this addon, you can set a set of PBR textures at once to the selected material(s) in the Sufaces Pane. By selecting just a single file in the GUI dialog, this addon sets the all of textures whose checkbox are checked, according to the pre-defined file name suffixes.
+With this addon, you can set a set of PBR textures at once to the selected material(s) in the Sufaces Pane. By selecting just a single file in the GUI dialog, this addon sets all of the textures whose checkboxes are checked, according to the pre-defined file name suffixes.
 
 This addon is mainly useful for creating material presets.
 
